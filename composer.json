@@ -1,8 +1,12 @@
 {
-    "name": "highsolutions/laravel-lang-import-export",
+    "name": "aidask/laravel-lang-import-export",
     "description": "A Laravel package providing artisan commands to import and export language files from and to CSV.",
     "keywords": ["laravel", "localization", "translation", "messages", "import", "export", "CSV"],
     "authors": [
+        {
+            "name": "Aidas Klimas",
+            "email": "aidaskk@gmail.com"
+        },
         {
             "name": "Michael Ruoss",
             "email": "michael.ruoss@UFirstgroup.com"
@@ -14,25 +18,28 @@
     ],
     "license": "MIT",
     "require": {
-        "php": ">=5.6.4",
+        "php": ">=7.0.0",
         "illuminate/support": "5.x"
     },
     "autoload": {
         "psr-4": {
-            "HighSolutions\\LangImportExport\\": "src/"
+            "LangImportExport\\": "src/"
         },
         "files": [
             "src/Support/helpers.php"
         ]
+    },
+    "suggest": {
+        "ext-zip": "zip exported files"
     },
     "extra": {
         "component": "package",
         "frameworks": ["Laravel 5.7"],
         "laravel": {
             "providers": [
-                "HighSolutions\\LangImportExport\\LangImportExportServiceProvider"
-            ]            
+                "LangImportExport\\LangImportExportServiceProvider"
+            ]
         }
     },
-    "minimum-stability": "stable"
+    "minimum-stability": "dev"
 }

@@ -1,14 +1,15 @@
 <?php
-namespace HighSolutions\LangImportExport\Facades;
+
+namespace LangImportExport\Facades;
 
 use Illuminate\Support\Facades\Facade;
 
 class LangListService extends Facade
 {
 
-	protected static function getFacadeAccessor() 
-	{
-		return 'LangImportExportLangListService';
-	}
-	
+    protected static function getFacadeAccessor()
+    {
+        return 'LangImportExportLangListService';
+    }
+
 }

@@ -1,13 +1,13 @@
 <?php
 
-namespace HighSolutions\LangImportExport\Console;
+namespace LangImportExport\Console;
 
 use Illuminate\Console\Command;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Input\InputArgument;
-use HighSolutions\LangImportExport\Facades\LangListService;
+use LangImportExport\Facades\LangListService;
 
-class ExportToCsvCommand extends Command 
+class ExportToCsvCommand extends Command
 {
 
     /**
@@ -16,229 +16,203 @@ class ExportToCsvCommand extends Command
      * @var string
      */
     protected $signature = 'lang:export 
-    						{locale? : The locale to be exported (default - default lang of application).} 
-    						{group? : The name of translation file to export (default - all files).} 
-    						{output? : Filename of exported translation files (optional, default - storage/app/lang-import-export.csv).} 
-    						{--A|append : Append name of group to the name of file (optional, default - empty).}
+    						{--l|locale= : The locales to be exported. Separated by comma (default - base locale from config).} 
+    						{--t|target= : Target languages, only missing keys are exported. Separated by comma.} 
+    						{--g|group= : The name of translation file to export (default - base group from config).} 
+    						{--o|output= : Filename of exported translation, :locale, :target is replaced (default - export_path from config).} 
+    						{--z|zip= : Zip all files.}
     						{--X|excel : Set file encoding for Excel (optional, default - UTF-8).}
     						{--D|delimiter=, : Field delimiter (optional, default - ",").} 
     						{--E|enclosure=" : Field enclosure (optional, default - \'"\').} ';
 
-	/**
-	 * The console command description.
-	 *
-	 * @var string
-	 */
-	protected $description = "Exports the language files to CSV file";
+    /**
+     * The console command description.
+     *
+     * @var string
+     */
+    protected $description = "Exports language files to CSV file";
 
-	/**
-	 * Parameters provided to command.
-	 * 
-	 * @var array
-	 */
-	protected $parameters = [];
+    /**
+     * List of files created by the export
+     * @var array
+     */
+    protected $files = [];
 
-	/**
-	 * Default path for file save.
-	 * 
-	 * @var string
-	 */
-	protected $defaultPath;
+    /**
+     * Execute the console command.
+     *
+     * @return void
+     * @throws \Exception
+     */
+    public function handle()
+    {
+        $exportLocales = $this->option('locale') ?: config('lang_import_export.export_locale');
+        $targetLocales = $this->option('target') ?: config('lang_import_export.export_target');
+        foreach ($this->strToArray($exportLocales) as $exportLocale) {
+            foreach ($this->strToArray($targetLocales, [null]) as $targetLocale) {
+                $translations = $this->getTranslations($exportLocale, $targetLocale);
+                $this->saveTranslations($exportLocale, $targetLocale, $translations);
+                $this->info(strtoupper($exportLocale) . strtoupper($targetLocale ?: '') . ' Translations saved to: ' . $this->getOutputFileName($exportLocale, $targetLocale));
+            }
+        }
+        if ($zipName = $this->option('zip')) {
+            $this->info('Creating archive...');
+            $zip = new \ZipArchive;
+            if (!$zip->open($zipName, \ZipArchive::CREATE)) {
+                throw new \Exception("Failed to open $zipName");
+            }
+            foreach ($this->files as $file) {
+                $zip->addFile($file, basename($file));
+            }
+            $zip->close();
+            $this->info('Cleaning up the files...');
+            foreach ($this->files as $file) {
+                unlink($file);
+            }
+        }
+    }
 
-	/**
-	 * File extension (default .csv).
-	 * 
-	 * @var string
-	 */
-	protected $ext = '.csv';
+    private function strToArray($string, $fallback = [])
+    {
+        if (!$string) {
+            return $fallback;
+        }
+        return array_filter(array_map('trim', explode(',', $string)));
+    }
 
-	/**
-	 * Class constructor.
-	 * 
-	 * @return void
-	 */
-	public function __construct()
-	{
-		parent::__construct();
-		$this->defaultPath = storage_path('app'. DIRECTORY_SEPARATOR .'lang-import-export') . $this->ext;
-	}
+    /**
+     * Get translations from localization files.
+     *
+     * @param $locale
+     * @param null $target
+     * @return array
+     */
+    private function getTranslations($locale, $target = null)
+    {
+        $group = $this->option('group') ?: config('lang_import_export.base_group');
+        $from = LangListService::loadLangList($locale, $group);
+        if ($target) {
+            $targetList = LangListService::loadLangList($target, $group);
+            foreach ($targetList as $group => $translations) {
+                foreach ($translations as $key => $v) {
+                    unset($from[$group][$key]);
+                }
+            }
+        }
+        return $from;
+    }
 
-	/**
-	 * Execute the console command.
-	 *
-	 * @return void
-	 */
-	public function handle()
-	{
-		$this->getParameters();	
+    /**
+     * Save fetched translations to file.
+     *
+     * @param $locale
+     * @param $target
+     * @param $translations
+     * @return void
+     * @throws \Exception
+     */
+    private function saveTranslations($locale, $target, $translations)
+    {
+        $output = $this->openFile($locale, $target);
 
-		$this->sayItsBeginning();
+        $this->saveTranslationsToFile($output, $translations);
 
-		$translations = $this->getTranslations();
+        $this->closeFile($output);
 
-		$this->saveTranslations($translations);
+        if ($this->option('excel')) {
+            $this->adjustToExcel($this->getOutputFileName($locale, $target));
+        }
+    }
 
-		$this->sayItsFinish();
-	}
+    /**
+     * Open specified file (if not possible, open default one).
+     *
+     * @param $locale
+     * @param $target
+     * @throws \Exception
+     * @return resource
+     */
+    private function openFile($locale, $target)
+    {
+        $fileName = $this->getOutputFileName($locale, $target);
 
-	/**
-	 * Fetch command parameters (arguments and options) and analyze them.
-	 * 
-	 * @return void
-	 */
-	private function getParameters()
-	{
-		$this->parameters = [
-			'group' => $this->argument('group'),
-			'locale' => $this->argument('locale') === null ? config('app.locale') : $this->argument('locale'),
-			'output' => $this->argument('output') === null ? $this->defaultPath : base_path($this->argument('output')),
-			'append' => $this->option('append') !== false,
-			'excel' => $this->option('excel') !== false,
-			'delimiter' => $this->option('delimiter'),
-			'enclosure' => $this->option('enclosure'),
-		];	
+        if (!($output = fopen($fileName, 'w'))) {
+            throw new \Exception("$fileName failed to open");
+        }
+        $this->files[] = $fileName;
 
-		$this->setDefaultPath();		
-	}
+        fputs($output, "\xEF\xBB\xBF");
 
-	/**
-	 * Set possible file names.
-	 * 
-	 * @return void
-	 */
-	private function setDefaultPath()
-	{
-		if($this->parameters['append']) {
-			$this->parameters['output'] .= '-'. $this->parameters['group'];
-			$this->defaultPath .= '-'. $this->parameters['group'];
-		}
-	}
+        return $output;
+    }
 
-	/**
-	 * Display output that command has started and which groups are being exported.
-	 * 
-	 * @return void
-	 */
-	private function sayItsBeginning()
-	{
-		$this->info(PHP_EOL
-			. 'Translations export of '. ($this->parameters['group'] === null ? 'all groups' : $this->parameters['group'] .' group') .' - started.');
-	}
+    /**
+     * Save content of translation files to specified file.
+     *
+     * @param resource $output
+     * @param array $translations
+     * @return void
+     */
+    private function saveTranslationsToFile($output, $translations)
+    {
+        foreach ($translations as $group => $files) {
+            foreach ($files as $key => $value) {
+                if (is_array($value)) {
+                    continue;
+                }
+                $this->writeFile($output, $group, $key, $value);
+            }
+        }
+    }
 
-	/**
-	 * Get translations from localization files.
-	 * 
-	 * @return array
-	 */
-	private function getTranslations()
-	{
-		return LangListService::loadLangList($this->parameters['locale'], $this->parameters['group']);
-	}
+    /**
+     * Put content of file to specified file with CSV parameters.
+     *
+     * @return void
+     */
+    private function writeFile()
+    {
+        $data = func_get_args();
+        $output = array_shift($data);
+        fputcsv($output, $data, $this->option('delimiter'), $this->option('enclosure'));
+    }
 
-	/**
-	 * Save fetched translations to file.
-	 * 
-	 * @return void
-	 */
-	private function saveTranslations($translations)
-	{
-		$output = $this->openFile();
+    /**
+     * Close output file and check if adjust file to Excel format.
+     *
+     * @param resource $output
+     * @return void
+     */
+    private function closeFile($output)
+    {
+        fclose($output);
+    }
 
-		$this->saveTranslationsToFile($output, $translations);
+    /**
+     * Adjust file to Excel format.
+     *
+     * @return void
+     *
+     */
+    private function adjustToExcel($fileName)
+    {
+        $data = file_get_contents($fileName);
+        file_put_contents(
+            $fileName,
+            chr(255) . chr(254) . mb_convert_encoding($data, 'UTF-16LE', 'UTF-8')
+        );
+    }
 
-		$this->closeFile($output);
-	}
-
-	/**
-	 * Open specified file (if not possible, open default one).
-	 * 
-	 * @return FilePointerResource
-	 */
-	private function openFile()
-	{
-		if(substr($this->parameters['output'], -4) != $this->ext)
-			$this->parameters['output'] .= $this->ext;
-
-		if (!($output = fopen($this->parameters['output'], 'w'))) {
-			$output = fopen($this->defaultPath . $this->ext, 'w');
-		}
-		
-		fputs($output, "\xEF\xBB\xBF");
-		
-		return $output;
-	}
-
-	/**
-	 * Save content of translation files to specified file.
-	 * 
-	 * @param FilePointerResource $output
-	 * @param array $translations
-	 * @return void
-	 */
-	private function saveTranslationsToFile($output, $translations)
-	{
-		foreach ($translations as $group => $files) {
-			foreach($files as $key => $value) {
-				if(is_array($value)) {
-			    		continue;
-				}
-				$this->writeFile($output, $group, $key, $value);
-			}
-		}
-	}
-
-	/**
-	 * Put content of file to specified file with CSV parameters.
-	 * 
-	 * @param FilePointerResource $output
-	 * @param string $group
-	 * @param string $key
-	 * @param string $value
-	 * @return void
-	 * 
-	 */
-	private function writeFile()
-	{
-		$data = func_get_args();
-		$output = array_shift($data);
-		fputcsv($output, $data, $this->parameters['delimiter'], $this->parameters['enclosure']);
-	}
-
-	/**
-	 * Close output file and check if adjust file to Excel format.
-	 * 
-	 * @param FilePointerResource $output
-	 * @return void
-	 */
-	private function closeFile($output)
-	{
-		fclose($output);
-
-		if($this->parameters['excel'])
-			$this->adjustToExcel();
-	}
-
-	/**
-	 * Adjust file to Excel format.
-	 * 
-	 * @return void
-	 * 
-	 */
-	private function adjustToExcel()
-	{
-		$data = file_get_contents($this->parameters['output']);
-		file_put_contents($this->parameters['output'], chr(255) . chr(254) . mb_convert_encoding($data, 'UTF-16LE', 'UTF-8'));		
-	}
-
-	/**
-	 * Display output that command is finished and where to find file.
-	 * 
-	 * @return void
-	 */
-	private function sayItsFinish()
-	{
-		$this->info('Finished! Translations saved to: '. (substr($this->parameters['output'], strlen(base_path()) + 1))  
-			. PHP_EOL);
-	}
-
+    /**
+     * @param $locale
+     * @param null $target
+     * @return mixed
+     */
+    private function getOutputFileName($locale, $target = null)
+    {
+        $fileName = $this->option('output') ?: config('lang_import_export.export_path');
+        $fileName = str_replace(':locale', $locale, $fileName);
+        $fileName = str_replace(':target', $target, $fileName);
+        return $fileName;
+    }
 }

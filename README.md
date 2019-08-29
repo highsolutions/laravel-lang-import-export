@@ -1,9 +1,11 @@
-![Laravel-Lang-Import-Export by HighSolutions](https://raw.githubusercontent.com/highsolutions/laravel-lang-import-export/master/intro.jpg)
+![Laravel-Lang-Import-Export v6](https://raw.githubusercontent.com/AidasK/laravel-lang-import-export/master/logo.png)
 
-Laravel-Lang-Import-Export
+Laravel-Lang-Import-Export **(Refactored)**
 ==========================
 
-This package provides artisan commands to import and export language files from and to CSV. This can be used to send translations to agencies that normally work with Excel-like files.
+This package provides artisan commands to import and export language files from and to CSV. This can be used to send translations to agencies that normally work with Excel-like files. In practice, CSV format is supper easy to work with for any translator in Fiverr or for any other freelancer. Personally, I have tried every other format such as **php, yaml, docx, pod, txt** and all of them has too complex syntax and requires custom software to work with (Not to mention all those problems with file encodings). CSV solves it all!
+
+# How It Works? 
 
 It turns some navigation.php file...
 
@@ -41,15 +43,9 @@ navigation.tips.play,"Autoplay the slide show"
 Installation
 ------------
 
-Add the following line to the `require` section of your Laravel webapp's `composer.json` file:
-
-```javascript
-    "require": {
-        "HighSolutions/laravel-lang-import-export": "5.4.*"
-    }
+```sh
+    composer require aidask/laravel-lang-import-export
 ```
-
-Run `composer update` to install the package.
 
 This package uses Laravel 5.5 Package Auto-Discovery.
 For previous versions of Laravel, you need to update `config/app.php` by adding an entry for the service provider:
@@ -57,7 +53,7 @@ For previous versions of Laravel, you need to update `config/app.php` by adding 
 ```php
     'providers' => array(
         /* ... */
-        'HighSolutions\LangImportExport\LangImportExportServiceProvider'
+        'LangImportExport\LangImportExportServiceProvider'
     )
 ```
 
@@ -69,46 +65,43 @@ The package currently provides two commands, one for exporting the files and one
 ### Export
 
 ```bash
-php artisan lang:export
-php artisan lang:export en * path/to/export
-php artisan lang:export en auth -A -X
+php artisan lang:export --locale en
+php artisan lang:export --locale en --target fr,de,pt  # export en translations only missing in fr,de,pt locales. Each in separate files
+php artisan lang:export -l fr,de,pt -z all.zip  # archive all the files
+php artisan lang:export --locale en -g paggination,validation  # export only cretain groups 
 ```
-
-When you call command without parameters, export file will be generated for all localization files within default locale. But you can define **locale** explicitly. You can also export only one file (second parameter - **group**) and define where to store file (you can provide name with and without .csv extension). When you use **output** argument, default path is base_path() -> catalog of your whole project.
-But there is few more useful parameters:
-
-| name of parameter | description                             | is required? | default value                      |
-|-------------------|-----------------------------------------|--------------|------------------------------------|
-| locale           | The locale to be exported                | NO           | default lang of application        |
-| group            | The name of translation file to export   | NO           | \* - all files                     |
-| output           | Filename of exported translation files   | NO           | storage/app/lang-import-export.csv |
-| -A / --append    | Append name of group to the name of file | NO           | empty                              |
-| -X / --excel     | Set file encoding (UTF-16) for Excel     | NO           | UTF-8                              |
-| -D / --delimiter | Field delimiter                          | NO           | ,                                  |
-| -E / --enclosure | Field enclosure                          | NO           | "                                  |
 
 ### Import
-
+```bash
+php artisan lang:import es.csv # localed autodetected from file name
+php artisan lang:import espaniol.csv -l es
+php artisan lang:import espaniol.csv -l es -g paggination,validation # import only cretain groups
+php artisan lang:import es.csv -p # validate imported translations for missing placeholders (see below)
 ```
-php artisan lang:import
-php artisan lang:import en * path/to/import
-php artisan lang:import en auth -X
+
+### Validate
+```bash
+php artisan lang:validate ar -m -v
+```
+![Laravel-Lang-Import-Export validation example](https://raw.githubusercontent.com/AidasK/laravel-lang-import-export/master/validation.png)
+
+
+### Config
+
+You can export package config if you want to set defaults for the commands:
+```bash
+php artisan vendor:publish
 ```
 
-When you call command without parameters - it will try to read default file of export command without parameters for default locale and all localization files. You can of course specify all parameters (**locale**, **group**, **input**) and there is few more options:
-
-| name of parameter | description                                  | is required? | default value                      |
-|-------------------|----------------------------------------------|--------------|------------------------------------|
-| locale            | The locale to be imported                    | NO           | default lang of application        |
-| group             | The name of translation file to import       | NO           | * - all files                      |
-| output            | Filename of translation files to be imported | NO           | storage/app/lang-import-export.csv |
-| -X / --excel      | Set file encoding from Excel                 | NO           | UTF-8                              |
-| -D / --delimiter  | Field delimiter                              | NO           | ,                                  |
-| -E / --enclosure  | Field enclosure                              | NO           | "                                  |
-| -C / --escape     | Field escape                                 | NO           | \                                  |
 
 Changelog
 ------------
+
+6.1.0
+* Validate placeholders feature
+
+6.0.0
+* refactor whole repository
 
 5.4.10
 * Laravel 5.7 support
@@ -142,17 +135,10 @@ Changelog
 - add support for export and import all localization files
 - any arguments are not required
 
-Roadmap
-------------
-
-* Removing tabs from text
-* Option for deleting export file after importing.
-* Option for excluding certain files (and system ones).
-* Unit tests!
 
 Credits
 ------------
 
 This package was originally created by [UFirst](http://github.com/ufirstgroup) and is available here: [Laravel-lang-import-export](https://github.com/ufirstgroup/laravel-lang-import-export).
 
-Currently is developed by [HighSolutions](https://highsolutions.org), software house from Poland in love in Laravel.
+Currently is developed by [Aidas Klimas](https://klimas.lt/), software house from Lithuania
